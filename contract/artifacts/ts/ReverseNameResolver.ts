@@ -21,6 +21,7 @@ import {
   callMethod,
   multicallMethods,
   fetchContractState,
+  Asset,
   ContractInstance,
   getContractEventsCurrentCount,
   TestContractParamsWithoutMaps,
@@ -30,6 +31,7 @@ import {
   signExecuteMethod,
   addStdIdToFields,
   encodeContractFields,
+  Narrow,
 } from "@alephium/web3";
 import { default as ReverseNameResolverContractJson } from "../reverse_name_resolver/ReverseNameResolver.ral.json";
 import { getContractByCodeHash } from "./contracts";
@@ -116,10 +118,9 @@ export namespace ReverseNameResolverTypes {
       ? CallMethodTable[MaybeName]["result"]
       : undefined;
   };
-  export type MulticallReturnType<Callss extends MultiCallParams[]> =
-    Callss["length"] extends 1
-      ? MultiCallResults<Callss[0]>
-      : { [index in keyof Callss]: MultiCallResults<Callss[index]> };
+  export type MulticallReturnType<Callss extends MultiCallParams[]> = {
+    [index in keyof Callss]: MultiCallResults<Callss[index]>;
+  };
 
   export interface SignExecuteMethodTable {
     getNameByAddress: {
@@ -143,6 +144,8 @@ export namespace ReverseNameResolverTypes {
     SignExecuteMethodTable[T]["params"];
   export type SignExecuteMethodResult<T extends keyof SignExecuteMethodTable> =
     SignExecuteMethodTable[T]["result"];
+
+  export type Maps = { addressNames?: Map<Address, HexString> };
 }
 
 class Factory extends ContractFactory<ReverseNameResolverInstance, {}> {
@@ -190,12 +193,12 @@ class Factory extends ContractFactory<ReverseNameResolverInstance, {}> {
         TestContractParams<
           never,
           { address: Address },
-          { addressNames?: Map<Address, HexString> }
+          ReverseNameResolverTypes.Maps
         >,
         "initialFields"
       >
     ): Promise<
-      TestContractResult<HexString, { addressNames?: Map<Address, HexString> }>
+      TestContractResult<HexString, ReverseNameResolverTypes.Maps>
     > => {
       return testMethod(
         this,
@@ -209,13 +212,11 @@ class Factory extends ContractFactory<ReverseNameResolverInstance, {}> {
         TestContractParams<
           never,
           { address: Address },
-          { addressNames?: Map<Address, HexString> }
+          ReverseNameResolverTypes.Maps
         >,
         "initialFields"
       >
-    ): Promise<
-      TestContractResult<boolean, { addressNames?: Map<Address, HexString> }>
-    > => {
+    ): Promise<TestContractResult<boolean, ReverseNameResolverTypes.Maps>> => {
       return testMethod(
         this,
         "containsNameByAddress",
@@ -228,27 +229,19 @@ class Factory extends ContractFactory<ReverseNameResolverInstance, {}> {
         TestContractParams<
           never,
           { name: HexString },
-          { addressNames?: Map<Address, HexString> }
+          ReverseNameResolverTypes.Maps
         >,
         "initialFields"
       >
-    ): Promise<
-      TestContractResult<null, { addressNames?: Map<Address, HexString> }>
-    > => {
+    ): Promise<TestContractResult<null, ReverseNameResolverTypes.Maps>> => {
       return testMethod(this, "setAddressName", params, getContractByCodeHash);
     },
     removeAddress: async (
       params?: Omit<
-        TestContractParams<
-          never,
-          never,
-          { addressNames?: Map<Address, HexString> }
-        >,
+        TestContractParams<never, never, ReverseNameResolverTypes.Maps>,
         "testArgs" | "initialFields"
       >
-    ): Promise<
-      TestContractResult<null, { addressNames?: Map<Address, HexString> }>
-    > => {
+    ): Promise<TestContractResult<null, ReverseNameResolverTypes.Maps>> => {
       return testMethod(
         this,
         "removeAddress",
@@ -257,6 +250,15 @@ class Factory extends ContractFactory<ReverseNameResolverInstance, {}> {
       );
     },
   };
+
+  stateForTest(
+    initFields: {},
+    asset?: Asset,
+    address?: string,
+    maps?: ReverseNameResolverTypes.Maps
+  ) {
+    return this.stateForTest_(initFields, asset, address, maps);
+  }
 }
 
 // Use this object to test and deploy the contract
@@ -532,14 +534,22 @@ export class ReverseNameResolverInstance extends ContractInstance {
     },
   };
 
+  async multicall<Calls extends ReverseNameResolverTypes.MultiCallParams>(
+    calls: Calls
+  ): Promise<ReverseNameResolverTypes.MultiCallResults<Calls>>;
   async multicall<Callss extends ReverseNameResolverTypes.MultiCallParams[]>(
-    ...callss: Callss
-  ): Promise<ReverseNameResolverTypes.MulticallReturnType<Callss>> {
-    return (await multicallMethods(
+    callss: Narrow<Callss>
+  ): Promise<ReverseNameResolverTypes.MulticallReturnType<Callss>>;
+  async multicall<
+    Callss extends
+      | ReverseNameResolverTypes.MultiCallParams
+      | ReverseNameResolverTypes.MultiCallParams[]
+  >(callss: Callss): Promise<unknown> {
+    return await multicallMethods(
       ReverseNameResolver,
       this,
       callss,
       getContractByCodeHash
-    )) as ReverseNameResolverTypes.MulticallReturnType<Callss>;
+    );
   }
 }

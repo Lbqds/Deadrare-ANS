@@ -21,6 +21,7 @@ import {
   callMethod,
   multicallMethods,
   fetchContractState,
+  Asset,
   ContractInstance,
   getContractEventsCurrentCount,
   TestContractParamsWithoutMaps,
@@ -30,6 +31,7 @@ import {
   signExecuteMethod,
   addStdIdToFields,
   encodeContractFields,
+  Narrow,
 } from "@alephium/web3";
 import { default as RewardTokenContractJson } from "../forward_name_resolver/RewardToken.ral.json";
 import { getContractByCodeHash } from "./contracts";
@@ -85,10 +87,9 @@ export namespace RewardTokenTypes {
       ? CallMethodTable[MaybeName]["result"]
       : undefined;
   };
-  export type MulticallReturnType<Callss extends MultiCallParams[]> =
-    Callss["length"] extends 1
-      ? MultiCallResults<Callss[0]>
-      : { [index in keyof Callss]: MultiCallResults<Callss[index]> };
+  export type MulticallReturnType<Callss extends MultiCallParams[]> = {
+    [index in keyof Callss]: MultiCallResults<Callss[index]>;
+  };
 
   export interface SignExecuteMethodTable {
     getSymbol: {
@@ -210,6 +211,14 @@ class Factory extends ContractFactory<
       return testMethod(this, "burnTokens", params, getContractByCodeHash);
     },
   };
+
+  stateForTest(
+    initFields: RewardTokenTypes.Fields,
+    asset?: Asset,
+    address?: string
+  ) {
+    return this.stateForTest_(initFields, asset, address, undefined);
+  }
 }
 
 // Use this object to test and deploy the contract
@@ -334,14 +343,22 @@ export class RewardTokenInstance extends ContractInstance {
     },
   };
 
+  async multicall<Calls extends RewardTokenTypes.MultiCallParams>(
+    calls: Calls
+  ): Promise<RewardTokenTypes.MultiCallResults<Calls>>;
   async multicall<Callss extends RewardTokenTypes.MultiCallParams[]>(
-    ...callss: Callss
-  ): Promise<RewardTokenTypes.MulticallReturnType<Callss>> {
-    return (await multicallMethods(
+    callss: Narrow<Callss>
+  ): Promise<RewardTokenTypes.MulticallReturnType<Callss>>;
+  async multicall<
+    Callss extends
+      | RewardTokenTypes.MultiCallParams
+      | RewardTokenTypes.MultiCallParams[]
+  >(callss: Callss): Promise<unknown> {
+    return await multicallMethods(
       RewardToken,
       this,
       callss,
       getContractByCodeHash
-    )) as RewardTokenTypes.MulticallReturnType<Callss>;
+    );
   }
 }

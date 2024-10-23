@@ -21,6 +21,7 @@ import {
   callMethod,
   multicallMethods,
   fetchContractState,
+  Asset,
   ContractInstance,
   getContractEventsCurrentCount,
   TestContractParamsWithoutMaps,
@@ -30,6 +31,7 @@ import {
   signExecuteMethod,
   addStdIdToFields,
   encodeContractFields,
+  Narrow,
 } from "@alephium/web3";
 import { default as CropContractJson } from "../farm/Crop.ral.json";
 import { getContractByCodeHash } from "./contracts";
@@ -115,10 +117,9 @@ export namespace CropTypes {
       ? CallMethodTable[MaybeName]["result"]
       : undefined;
   };
-  export type MulticallReturnType<Callss extends MultiCallParams[]> =
-    Callss["length"] extends 1
-      ? MultiCallResults<Callss[0]>
-      : { [index in keyof Callss]: MultiCallResults<Callss[index]> };
+  export type MulticallReturnType<Callss extends MultiCallParams[]> = {
+    [index in keyof Callss]: MultiCallResults<Callss[index]>;
+  };
 
   export interface SignExecuteMethodTable {
     getTokenUri: {
@@ -321,6 +322,10 @@ class Factory extends ContractFactory<CropInstance, CropTypes.Fields> {
       return testMethod(this, "getTraits", params, getContractByCodeHash);
     },
   };
+
+  stateForTest(initFields: CropTypes.Fields, asset?: Asset, address?: string) {
+    return this.stateForTest_(initFields, asset, address, undefined);
+  }
 }
 
 // Use this object to test and deploy the contract
@@ -568,14 +573,15 @@ export class CropInstance extends ContractInstance {
     },
   };
 
+  async multicall<Calls extends CropTypes.MultiCallParams>(
+    calls: Calls
+  ): Promise<CropTypes.MultiCallResults<Calls>>;
   async multicall<Callss extends CropTypes.MultiCallParams[]>(
-    ...callss: Callss
-  ): Promise<CropTypes.MulticallReturnType<Callss>> {
-    return (await multicallMethods(
-      Crop,
-      this,
-      callss,
-      getContractByCodeHash
-    )) as CropTypes.MulticallReturnType<Callss>;
+    callss: Narrow<Callss>
+  ): Promise<CropTypes.MulticallReturnType<Callss>>;
+  async multicall<
+    Callss extends CropTypes.MultiCallParams | CropTypes.MultiCallParams[]
+  >(callss: Callss): Promise<unknown> {
+    return await multicallMethods(Crop, this, callss, getContractByCodeHash);
   }
 }

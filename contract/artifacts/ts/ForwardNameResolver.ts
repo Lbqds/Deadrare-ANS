@@ -21,6 +21,7 @@ import {
   callMethod,
   multicallMethods,
   fetchContractState,
+  Asset,
   ContractInstance,
   getContractEventsCurrentCount,
   TestContractParamsWithoutMaps,
@@ -30,6 +31,7 @@ import {
   signExecuteMethod,
   addStdIdToFields,
   encodeContractFields,
+  Narrow,
 } from "@alephium/web3";
 import { default as ForwardNameResolverContractJson } from "../forward_name_resolver/ForwardNameResolver.ral.json";
 import { getContractByCodeHash } from "./contracts";
@@ -128,6 +130,13 @@ export namespace ForwardNameResolverTypes {
       params: Omit<CallContractParams<{}>, "args">;
       result: CallContractResult<HexString>;
     };
+    handleCropRewardTokens: {
+      params: CallContractParams<{
+        caller: Address;
+        rewardTokenAmount: bigint;
+      }>;
+      result: CallContractResult<null>;
+    };
     mintCrop: {
       params: CallContractParams<{ alphAmount: bigint }>;
       result: CallContractResult<HexString>;
@@ -168,6 +177,19 @@ export namespace ForwardNameResolverTypes {
       params: Omit<CallContractParams<{}>, "args">;
       result: CallContractResult<HexString>;
     };
+    createName: {
+      params: CallContractParams<{
+        minter: Address;
+        index: bigint;
+        name: HexString;
+        capitalisation: HexString;
+      }>;
+      result: CallContractResult<HexString>;
+    };
+    handleRewardTokens: {
+      params: CallContractParams<{ caller: Address; name: HexString }>;
+      result: CallContractResult<null>;
+    };
     mint: {
       params: CallContractParams<{
         name: HexString;
@@ -207,10 +229,9 @@ export namespace ForwardNameResolverTypes {
       ? CallMethodTable[MaybeName]["result"]
       : undefined;
   };
-  export type MulticallReturnType<Callss extends MultiCallParams[]> =
-    Callss["length"] extends 1
-      ? MultiCallResults<Callss[0]>
-      : { [index in keyof Callss]: MultiCallResults<Callss[index]> };
+  export type MulticallReturnType<Callss extends MultiCallParams[]> = {
+    [index in keyof Callss]: MultiCallResults<Callss[index]>;
+  };
 
   export interface SignExecuteMethodTable {
     getCollectionUri: {
@@ -242,6 +263,13 @@ export namespace ForwardNameResolverTypes {
     };
     generateFarm: {
       params: Omit<SignExecuteContractMethodParams<{}>, "args">;
+      result: SignExecuteScriptTxResult;
+    };
+    handleCropRewardTokens: {
+      params: SignExecuteContractMethodParams<{
+        caller: Address;
+        rewardTokenAmount: bigint;
+      }>;
       result: SignExecuteScriptTxResult;
     };
     mintCrop: {
@@ -284,6 +312,22 @@ export namespace ForwardNameResolverTypes {
       params: Omit<SignExecuteContractMethodParams<{}>, "args">;
       result: SignExecuteScriptTxResult;
     };
+    createName: {
+      params: SignExecuteContractMethodParams<{
+        minter: Address;
+        index: bigint;
+        name: HexString;
+        capitalisation: HexString;
+      }>;
+      result: SignExecuteScriptTxResult;
+    };
+    handleRewardTokens: {
+      params: SignExecuteContractMethodParams<{
+        caller: Address;
+        name: HexString;
+      }>;
+      result: SignExecuteScriptTxResult;
+    };
     mint: {
       params: SignExecuteContractMethodParams<{
         name: HexString;
@@ -318,6 +362,8 @@ export namespace ForwardNameResolverTypes {
     SignExecuteMethodTable[T]["params"];
   export type SignExecuteMethodResult<T extends keyof SignExecuteMethodTable> =
     SignExecuteMethodTable[T]["result"];
+
+  export type Maps = { nameNftIndex?: Map<HexString, bigint> };
 }
 
 class Factory extends ContractFactory<
@@ -372,12 +418,12 @@ class Factory extends ContractFactory<
         TestContractParams<
           ForwardNameResolverTypes.Fields,
           never,
-          { nameNftIndex?: Map<HexString, bigint> }
+          ForwardNameResolverTypes.Maps
         >,
         "testArgs"
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(
         this,
@@ -391,23 +437,21 @@ class Factory extends ContractFactory<
         TestContractParams<
           ForwardNameResolverTypes.Fields,
           never,
-          { nameNftIndex?: Map<HexString, bigint> }
+          ForwardNameResolverTypes.Maps
         >,
         "testArgs"
       >
-    ): Promise<
-      TestContractResult<bigint, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<bigint, ForwardNameResolverTypes.Maps>> => {
       return testMethod(this, "totalSupply", params, getContractByCodeHash);
     },
     nftByIndex: async (
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { index: bigint },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "nftByIndex", params, getContractByCodeHash);
     },
@@ -415,11 +459,9 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { nftId: HexString; nftIndex: bigint },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<null, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<null, ForwardNameResolverTypes.Maps>> => {
       return testMethod(this, "validateNFT", params, getContractByCodeHash);
     },
     getFarmKey: async (
@@ -427,12 +469,12 @@ class Factory extends ContractFactory<
         TestContractParams<
           ForwardNameResolverTypes.Fields,
           never,
-          { nameNftIndex?: Map<HexString, bigint> }
+          ForwardNameResolverTypes.Maps
         >,
         "testArgs"
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "getFarmKey", params, getContractByCodeHash);
     },
@@ -441,12 +483,12 @@ class Factory extends ContractFactory<
         TestContractParams<
           ForwardNameResolverTypes.Fields,
           never,
-          { nameNftIndex?: Map<HexString, bigint> }
+          ForwardNameResolverTypes.Maps
         >,
         "testArgs"
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "getFarm", params, getContractByCodeHash);
     },
@@ -455,12 +497,12 @@ class Factory extends ContractFactory<
         TestContractParams<
           ForwardNameResolverTypes.Fields,
           never,
-          { nameNftIndex?: Map<HexString, bigint> }
+          ForwardNameResolverTypes.Maps
         >,
         "testArgs"
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "generateFarm", params, getContractByCodeHash);
     },
@@ -468,11 +510,9 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { caller: Address; rewardTokenAmount: bigint },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<null, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<null, ForwardNameResolverTypes.Maps>> => {
       return testMethod(
         this,
         "handleCropRewardTokens",
@@ -484,10 +524,10 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { alphAmount: bigint },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "mintCrop", params, getContractByCodeHash);
     },
@@ -495,21 +535,19 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { nftIndex: bigint },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<null, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<null, ForwardNameResolverTypes.Maps>> => {
       return testMethod(this, "deleteCrop", params, getContractByCodeHash);
     },
     getNftKey: async (
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { nftIndex: bigint },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "getNftKey", params, getContractByCodeHash);
     },
@@ -518,12 +556,12 @@ class Factory extends ContractFactory<
         TestContractParams<
           ForwardNameResolverTypes.Fields,
           never,
-          { nameNftIndex?: Map<HexString, bigint> }
+          ForwardNameResolverTypes.Maps
         >,
         "testArgs"
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(
         this,
@@ -536,10 +574,10 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { name: HexString },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "getNftByName", params, getContractByCodeHash);
     },
@@ -547,11 +585,9 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { name: HexString },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<boolean, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<boolean, ForwardNameResolverTypes.Maps>> => {
       return testMethod(
         this,
         "containsNftByName",
@@ -564,12 +600,12 @@ class Factory extends ContractFactory<
         TestContractParams<
           ForwardNameResolverTypes.Fields,
           never,
-          { nameNftIndex?: Map<HexString, bigint> }
+          ForwardNameResolverTypes.Maps
         >,
         "testArgs"
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "getRewardToken", params, getContractByCodeHash);
     },
@@ -577,22 +613,18 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { nft: HexString },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<boolean, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<boolean, ForwardNameResolverTypes.Maps>> => {
       return testMethod(this, "hasExpired", params, getContractByCodeHash);
     },
     canRenew: async (
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { nft: HexString },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<boolean, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<boolean, ForwardNameResolverTypes.Maps>> => {
       return testMethod(this, "canRenew", params, getContractByCodeHash);
     },
     generateToken: async (
@@ -600,12 +632,12 @@ class Factory extends ContractFactory<
         TestContractParams<
           ForwardNameResolverTypes.Fields,
           never,
-          { nameNftIndex?: Map<HexString, bigint> }
+          ForwardNameResolverTypes.Maps
         >,
         "testArgs"
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "generateToken", params, getContractByCodeHash);
     },
@@ -618,10 +650,10 @@ class Factory extends ContractFactory<
           name: HexString;
           capitalisation: HexString;
         },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "createName", params, getContractByCodeHash);
     },
@@ -629,11 +661,9 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { caller: Address; name: HexString },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<null, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<null, ForwardNameResolverTypes.Maps>> => {
       return testMethod(
         this,
         "handleRewardTokens",
@@ -645,10 +675,10 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { name: HexString; capitalisation: HexString },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
     ): Promise<
-      TestContractResult<HexString, { nameNftIndex?: Map<HexString, bigint> }>
+      TestContractResult<HexString, ForwardNameResolverTypes.Maps>
     > => {
       return testMethod(this, "mint", params, getContractByCodeHash);
     },
@@ -656,22 +686,18 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { name: HexString; newAddress: Address },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<null, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<null, ForwardNameResolverTypes.Maps>> => {
       return testMethod(this, "setAddress", params, getContractByCodeHash);
     },
     setCapitalisation: async (
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { name: HexString; newCapitalisation: HexString },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<null, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<null, ForwardNameResolverTypes.Maps>> => {
       return testMethod(
         this,
         "setCapitalisation",
@@ -683,25 +709,30 @@ class Factory extends ContractFactory<
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { name: HexString },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<null, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<null, ForwardNameResolverTypes.Maps>> => {
       return testMethod(this, "renewName", params, getContractByCodeHash);
     },
     deleteExpired: async (
       params: TestContractParams<
         ForwardNameResolverTypes.Fields,
         { name: HexString },
-        { nameNftIndex?: Map<HexString, bigint> }
+        ForwardNameResolverTypes.Maps
       >
-    ): Promise<
-      TestContractResult<null, { nameNftIndex?: Map<HexString, bigint> }>
-    > => {
+    ): Promise<TestContractResult<null, ForwardNameResolverTypes.Maps>> => {
       return testMethod(this, "deleteExpired", params, getContractByCodeHash);
     },
   };
+
+  stateForTest(
+    initFields: ForwardNameResolverTypes.Fields,
+    asset?: Asset,
+    address?: string,
+    maps?: ForwardNameResolverTypes.Maps
+  ) {
+    return this.stateForTest_(initFields, asset, address, maps);
+  }
 }
 
 // Use this object to test and deploy the contract
@@ -955,6 +986,19 @@ export class ForwardNameResolverInstance extends ContractInstance {
         getContractByCodeHash
       );
     },
+    handleCropRewardTokens: async (
+      params: ForwardNameResolverTypes.CallMethodParams<"handleCropRewardTokens">
+    ): Promise<
+      ForwardNameResolverTypes.CallMethodResult<"handleCropRewardTokens">
+    > => {
+      return callMethod(
+        ForwardNameResolver,
+        this,
+        "handleCropRewardTokens",
+        params,
+        getContractByCodeHash
+      );
+    },
     mintCrop: async (
       params: ForwardNameResolverTypes.CallMethodParams<"mintCrop">
     ): Promise<ForwardNameResolverTypes.CallMethodResult<"mintCrop">> => {
@@ -1066,6 +1110,30 @@ export class ForwardNameResolverInstance extends ContractInstance {
         this,
         "generateToken",
         params === undefined ? {} : params,
+        getContractByCodeHash
+      );
+    },
+    createName: async (
+      params: ForwardNameResolverTypes.CallMethodParams<"createName">
+    ): Promise<ForwardNameResolverTypes.CallMethodResult<"createName">> => {
+      return callMethod(
+        ForwardNameResolver,
+        this,
+        "createName",
+        params,
+        getContractByCodeHash
+      );
+    },
+    handleRewardTokens: async (
+      params: ForwardNameResolverTypes.CallMethodParams<"handleRewardTokens">
+    ): Promise<
+      ForwardNameResolverTypes.CallMethodResult<"handleRewardTokens">
+    > => {
+      return callMethod(
+        ForwardNameResolver,
+        this,
+        "handleRewardTokens",
+        params,
         getContractByCodeHash
       );
     },
@@ -1196,6 +1264,18 @@ export class ForwardNameResolverInstance extends ContractInstance {
         params
       );
     },
+    handleCropRewardTokens: async (
+      params: ForwardNameResolverTypes.SignExecuteMethodParams<"handleCropRewardTokens">
+    ): Promise<
+      ForwardNameResolverTypes.SignExecuteMethodResult<"handleCropRewardTokens">
+    > => {
+      return signExecuteMethod(
+        ForwardNameResolver,
+        this,
+        "handleCropRewardTokens",
+        params
+      );
+    },
     mintCrop: async (
       params: ForwardNameResolverTypes.SignExecuteMethodParams<"mintCrop">
     ): Promise<
@@ -1291,6 +1371,25 @@ export class ForwardNameResolverInstance extends ContractInstance {
         params
       );
     },
+    createName: async (
+      params: ForwardNameResolverTypes.SignExecuteMethodParams<"createName">
+    ): Promise<
+      ForwardNameResolverTypes.SignExecuteMethodResult<"createName">
+    > => {
+      return signExecuteMethod(ForwardNameResolver, this, "createName", params);
+    },
+    handleRewardTokens: async (
+      params: ForwardNameResolverTypes.SignExecuteMethodParams<"handleRewardTokens">
+    ): Promise<
+      ForwardNameResolverTypes.SignExecuteMethodResult<"handleRewardTokens">
+    > => {
+      return signExecuteMethod(
+        ForwardNameResolver,
+        this,
+        "handleRewardTokens",
+        params
+      );
+    },
     mint: async (
       params: ForwardNameResolverTypes.SignExecuteMethodParams<"mint">
     ): Promise<ForwardNameResolverTypes.SignExecuteMethodResult<"mint">> => {
@@ -1336,14 +1435,22 @@ export class ForwardNameResolverInstance extends ContractInstance {
     },
   };
 
+  async multicall<Calls extends ForwardNameResolverTypes.MultiCallParams>(
+    calls: Calls
+  ): Promise<ForwardNameResolverTypes.MultiCallResults<Calls>>;
   async multicall<Callss extends ForwardNameResolverTypes.MultiCallParams[]>(
-    ...callss: Callss
-  ): Promise<ForwardNameResolverTypes.MulticallReturnType<Callss>> {
-    return (await multicallMethods(
+    callss: Narrow<Callss>
+  ): Promise<ForwardNameResolverTypes.MulticallReturnType<Callss>>;
+  async multicall<
+    Callss extends
+      | ForwardNameResolverTypes.MultiCallParams
+      | ForwardNameResolverTypes.MultiCallParams[]
+  >(callss: Callss): Promise<unknown> {
+    return await multicallMethods(
       ForwardNameResolver,
       this,
       callss,
       getContractByCodeHash
-    )) as ForwardNameResolverTypes.MulticallReturnType<Callss>;
+    );
   }
 }

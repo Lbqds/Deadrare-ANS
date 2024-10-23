@@ -21,6 +21,7 @@ import {
   callMethod,
   multicallMethods,
   fetchContractState,
+  Asset,
   ContractInstance,
   getContractEventsCurrentCount,
   TestContractParamsWithoutMaps,
@@ -30,6 +31,7 @@ import {
   signExecuteMethod,
   addStdIdToFields,
   encodeContractFields,
+  Narrow,
 } from "@alephium/web3";
 import { default as FarmContractJson } from "../farm/Farm.ral.json";
 import { getContractByCodeHash } from "./contracts";
@@ -144,10 +146,9 @@ export namespace FarmTypes {
       ? CallMethodTable[MaybeName]["result"]
       : undefined;
   };
-  export type MulticallReturnType<Callss extends MultiCallParams[]> =
-    Callss["length"] extends 1
-      ? MultiCallResults<Callss[0]>
-      : { [index in keyof Callss]: MultiCallResults<Callss[index]> };
+  export type MulticallReturnType<Callss extends MultiCallParams[]> = {
+    [index in keyof Callss]: MultiCallResults<Callss[index]>;
+  };
 
   export interface SignExecuteMethodTable {
     getCollectionUri: {
@@ -307,6 +308,10 @@ class Factory extends ContractFactory<FarmInstance, FarmTypes.Fields> {
       return testMethod(this, "deleteCrop", params, getContractByCodeHash);
     },
   };
+
+  stateForTest(initFields: FarmTypes.Fields, asset?: Asset, address?: string) {
+    return this.stateForTest_(initFields, asset, address, undefined);
+  }
 }
 
 // Use this object to test and deploy the contract
@@ -595,14 +600,15 @@ export class FarmInstance extends ContractInstance {
     },
   };
 
+  async multicall<Calls extends FarmTypes.MultiCallParams>(
+    calls: Calls
+  ): Promise<FarmTypes.MultiCallResults<Calls>>;
   async multicall<Callss extends FarmTypes.MultiCallParams[]>(
-    ...callss: Callss
-  ): Promise<FarmTypes.MulticallReturnType<Callss>> {
-    return (await multicallMethods(
-      Farm,
-      this,
-      callss,
-      getContractByCodeHash
-    )) as FarmTypes.MulticallReturnType<Callss>;
+    callss: Narrow<Callss>
+  ): Promise<FarmTypes.MulticallReturnType<Callss>>;
+  async multicall<
+    Callss extends FarmTypes.MultiCallParams | FarmTypes.MultiCallParams[]
+  >(callss: Callss): Promise<unknown> {
+    return await multicallMethods(Farm, this, callss, getContractByCodeHash);
   }
 }

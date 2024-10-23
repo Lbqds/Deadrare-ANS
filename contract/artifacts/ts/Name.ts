@@ -21,6 +21,7 @@ import {
   callMethod,
   multicallMethods,
   fetchContractState,
+  Asset,
   ContractInstance,
   getContractEventsCurrentCount,
   TestContractParamsWithoutMaps,
@@ -30,6 +31,7 @@ import {
   signExecuteMethod,
   addStdIdToFields,
   encodeContractFields,
+  Narrow,
 } from "@alephium/web3";
 import { default as NameContractJson } from "../forward_name_resolver/Name.ral.json";
 import { getContractByCodeHash } from "./contracts";
@@ -128,10 +130,9 @@ export namespace NameTypes {
       ? CallMethodTable[MaybeName]["result"]
       : undefined;
   };
-  export type MulticallReturnType<Callss extends MultiCallParams[]> =
-    Callss["length"] extends 1
-      ? MultiCallResults<Callss[0]>
-      : { [index in keyof Callss]: MultiCallResults<Callss[index]> };
+  export type MulticallReturnType<Callss extends MultiCallParams[]> = {
+    [index in keyof Callss]: MultiCallResults<Callss[index]>;
+  };
 
   export interface SignExecuteMethodTable {
     getTokenUri: {
@@ -380,6 +381,10 @@ class Factory extends ContractFactory<NameInstance, NameTypes.Fields> {
       return testMethod(this, "getTraits", params, getContractByCodeHash);
     },
   };
+
+  stateForTest(initFields: NameTypes.Fields, asset?: Asset, address?: string) {
+    return this.stateForTest_(initFields, asset, address, undefined);
+  }
 }
 
 // Use this object to test and deploy the contract
@@ -675,14 +680,15 @@ export class NameInstance extends ContractInstance {
     },
   };
 
+  async multicall<Calls extends NameTypes.MultiCallParams>(
+    calls: Calls
+  ): Promise<NameTypes.MultiCallResults<Calls>>;
   async multicall<Callss extends NameTypes.MultiCallParams[]>(
-    ...callss: Callss
-  ): Promise<NameTypes.MulticallReturnType<Callss>> {
-    return (await multicallMethods(
-      Name,
-      this,
-      callss,
-      getContractByCodeHash
-    )) as NameTypes.MulticallReturnType<Callss>;
+    callss: Narrow<Callss>
+  ): Promise<NameTypes.MulticallReturnType<Callss>>;
+  async multicall<
+    Callss extends NameTypes.MultiCallParams | NameTypes.MultiCallParams[]
+  >(callss: Callss): Promise<unknown> {
+    return await multicallMethods(Name, this, callss, getContractByCodeHash);
   }
 }
